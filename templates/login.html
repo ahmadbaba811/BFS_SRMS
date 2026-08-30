@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login \u2014 SRMS</title>
+    <title>Login SRMS</title>
 
     <link
         href="{{ url_for('static', filename='css/bootstrap.min.css') }}"
@@ -20,17 +20,21 @@
                     <div class="card-body p-4">
                         <h3 class="text-center mb-4">SRMS Login</h3>
 
-                        <form>
+                        {% if query_result is not none %}
+                        <div class="alert alert-info">Students in database: {{ query_result }}</div>
+                        {% endif %}
+
+                        <form method="POST" action="{{ url_for('login') }}">
                             <div class="mb-3">
                                 <label class="form-label">Username</label>
-                                <input type="text" class="form-control" placeholder="Enter username">
+                                <input type="text" name="username" class="form-control" placeholder="Enter username">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Password</label>
-                                <input type="password" class="form-control" placeholder="Enter password">
+                                <input type="password" name="password" class="form-control" placeholder="Enter password">
                             </div>
-                            <!-- <button type="submit" class="btn btn-primary w-100">Log In</button> -->
-                            <a href="{{ url_for('home') }}" class="btn btn-primary w-100">Log In</a>
+                            <button type="submit" class="btn btn-primary w-100">Log In</button>
+                            <!-- <a href="{{ url_for('home') }}" class="btn btn-primary w-100">Log In</a> -->
                         </form>
 
                     </div>
