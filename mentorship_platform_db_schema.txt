@@ -1,0 +1,113 @@
+-- Mentorship Program — Beginner SQLite Model (v2)
+-- 10 tables: Program, Mentor, Mentee, Match, Meeting, Feedback, Achievement
+
+-- Program: a mentorship program mentors/mentees belong to
+CREATE TABLE Program (
+    ProgramID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProgramName TEXT,
+    StartDate TEXT,
+    EndDate TEXT
+);
+
+-- Mentor: a person offering mentorship
+CREATE TABLE Mentor (
+    MentorID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name TEXT,
+    Email TEXT,
+    Expertise TEXT,
+    JoinedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Mentee: a person receiving mentorship
+CREATE TABLE Mentee (
+    MenteeID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name TEXT,
+    Email TEXT,
+    Goal TEXT,
+    JoinedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Match: pairs a mentor with a mentee in a program (1-to-1 mentorship)
+CREATE TABLE Match (
+    MatchID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProgramID INTEGER,
+    MentorID INTEGER,
+    MenteeID INTEGER,
+    MatchDate TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Meeting: a single mentoring session between a matched pair
+CREATE TABLE Meeting (
+    MeetingID INTEGER PRIMARY KEY AUTOINCREMENT,
+    MatchID INTEGER,
+    MeetingDate TEXT,
+    Notes TEXT
+);
+
+-- Feedback: rating/comments left about a meeting
+CREATE TABLE Feedback (
+    FeedbackID INTEGER PRIMARY KEY AUTOINCREMENT,
+    MeetingID INTEGER,
+    Rating INTEGER,
+    Comments TEXT,
+    SubmittedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- MentorshipGroup: a group mentorship track (up to 3 mentors, many mentees)
+CREATE TABLE MentorshipGroup (
+    GroupID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProgramID INTEGER,
+    GroupName TEXT,
+    CreatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- GroupMentor: mentors assigned to a group (app enforces max 3 per group)
+CREATE TABLE GroupMentor (
+    GroupID INTEGER,
+    MentorID INTEGER,
+    PRIMARY KEY (GroupID, MentorID)
+);
+
+-- GroupMentee: mentees who are members of a group
+CREATE TABLE GroupMentee (
+    GroupID INTEGER,
+    MenteeID INTEGER,
+    PRIMARY KEY (GroupID, MenteeID)
+);
+
+-- Recognition: Mentor/Mentee of the Month award
+CREATE TABLE Recognition (
+    RecognitionID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProgramID INTEGER,
+    RecognitionType TEXT,   -- 'Mentor of the Month' or 'Mentee of the Month'
+    MentorID INTEGER,       -- filled when RecognitionType is for a mentor
+    MenteeID INTEGER,       -- filled when RecognitionType is for a mentee
+    Month TEXT,             -- e.g. '2026-08'
+    Reason TEXT,
+    AwardedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Login: simple account for a mentor or mentee to sign in
+CREATE TABLE Login (
+    LoginID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Username TEXT,
+    Password TEXT,
+    UserType TEXT,   -- 'Mentor' or 'Mentee'
+    MentorID INTEGER,
+    MenteeID INTEGER,
+    CreatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- Achievement: an outcome recorded for a mentee (e.g. got a job, finished a training)
+CREATE TABLE Achievement (
+    AchievementID INTEGER PRIMARY KEY AUTOINCREMENT,
+    MenteeID INTEGER,
+    MentorID INTEGER,       -- mentor who contributed to this achievement
+    AchievementType TEXT,   -- e.g. 'Job', 'Internship', 'Certification', 'Training'
+    Title TEXT,
+    Organisation TEXT,
+    AchievementDate TEXT,
+    Verified INTEGER,
+    CreatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+);

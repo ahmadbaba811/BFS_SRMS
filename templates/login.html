@@ -11,7 +11,6 @@
     >
 </head>
 <body class="bg-light d-flex align-items-center" style="height: 100vh;">
-
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-md-4">
@@ -20,23 +19,21 @@
                     <div class="card-body p-4">
                         <h3 class="text-center mb-4">SRMS Login</h3>
 
-                        {% if query_result is not none %}
-                        <div class="alert alert-info">Students in database: {{ query_result }}</div>
+                        {% if error %}
+                        <div class="alert alert-danger" role="alert">{{ error }}</div>
                         {% endif %}
 
                         <form method="POST" action="{{ url_for('login') }}">
                             <div class="mb-3">
-                                <label class="form-label">Username</label>
-                                <input type="text" name="username" class="form-control" placeholder="Enter username">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" id="username" name="username" class="form-control" placeholder="Enter username" required autofocus>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Password</label>
-                                <input type="password" name="password" class="form-control" placeholder="Enter password">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" id="password" name="password" class="form-control" placeholder="Enter password" required>
                             </div>
                             <button type="submit" class="btn btn-primary w-100">Log In</button>
-                            <!-- <a href="{{ url_for('home') }}" class="btn btn-primary w-100">Log In</a> -->
                         </form>
-
                     </div>
                 </div>
 
