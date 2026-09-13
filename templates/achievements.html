@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Achievements{% endblock %}
+{% block content %}
+<h1 class="mb-4">Your achievements</h1>
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Title</th>
+                        <th>Organisation</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for achievement in achievements %}<tr>
+                        <td>{{ achievement[0] }}</td>
+                        <td>{{ achievement[1] }}</td>
+                        <td>{{ achievement[2] or 'Not specified' }}</td>
+                        <td>{{ achievement[3] }}</td>
+                    </tr>{% else %}<tr>
+                        <td colspan="4" class="text-muted">No achievements recorded yet.</td>
+                    </tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

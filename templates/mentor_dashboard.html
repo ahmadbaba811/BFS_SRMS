@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Mentor Dashboard{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-muted mb-1">Mentor workspace</p>
+        <h1>Welcome, {{ user_name }}</h1>
+    </div>
+    <span class="badge bg-primary fs-6">Mentor</span>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Your profile</h5>
+                {% if profile %}
+                <p class="mb-1">{{ profile[1] }}</p>
+                <p class="text-muted mb-0">{{ profile[2] }}</p>
+                {% else %}
+                <p class="text-muted">
+                    Profile details unavailable.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Programs</h5>
+                <p class="display-6 mb-0">{{ programs|length }}</p>
+                <p class="text-muted mb-0">active assignments</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Mentees</h5>
+                <p class="display-6 mb-0">{{ mentees|length }}</p>
+                <p class="text-muted mb-0">people you support</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h4">Your mentees</h2>
+                {% if mentees %}
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Goal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for mentee in mentees %}
+                            <tr>
+                                <td>{{ mentee[0] }}</td>
+                                <td>{{ mentee[1] or 'Not set' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">No mentees are assigned yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h4">Recent meetings</h2>
+                {% if meetings %}<ul class="list-group list-group-flush">
+                    {% for meeting in meetings[:5] %}
+                    <li
+                        class="list-group-item px-0">
+                        <strong>{{ meeting[0] }}</strong> with {{ meeting[1] }}<br>
+                        <small
+                            class="text-muted">{{ meeting[2] or 'No notes added.' }}
+                        </small>
+                    </li>{% endfor %}</ul>
+                    {%else %}
+                        <p class="text-muted">No meetings recorded yet.</p>
+                    {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mt-4">
+    <div class="card-body">
+        <h2 class="h5 mb-3">Quick actions</h2>
+        <div class="d-flex flex-wrap gap-3">
+            <a class="btn btn-primary" href="{{ url_for('meetings') }}">View meetings</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('programs') }}">View programs</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login SRMS</title>
+    <title>Login | Mentorship Hub</title>
 
     <link
         href="{{ url_for('static', filename='css/bootstrap.min.css') }}"
         rel="stylesheet"
     >
 </head>
-<body class="bg-light d-flex align-items-center" style="height: 100vh;">
+<body class="bg-light d-flex align-items-center min-vh-100 py-4">
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-md-4">
 
                 <div class="card shadow-sm">
-                    <div class="card-body p-4">
-                        <h3 class="text-center mb-4">SRMS Login</h3>
+                    <div class="card-body p-4 p-md-5">
+                        <p class="text-center text-uppercase text-muted small fw-bold mb-2">Mentorship Hub</p>
+                        <h1 class="h3 text-center mb-4">Welcome back</h1>
 
                         {% if error %}
                         <div class="alert alert-danger" role="alert">{{ error }}</div>
