@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Mentees{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Mentees</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h2 class="h5 mb-3">{{ 'Edit mentee' if mentee_to_edit else 'Add a mentee' }}</h2>
+        <form method="POST" action="{{ url_for('edit_mentee', mentee_id=mentee_to_edit[0]) if mentee_to_edit else url_for('add_mentee') }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="name" class="form-label">Name</label>
+                    <input type="text" id="name" name="name" class="form-control" value="{{ mentee_to_edit[1] if mentee_to_edit else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" id="email" name="email" class="form-control" value="{{ mentee_to_edit[2] if mentee_to_edit else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="goal" class="form-label">Goal</label>
+                    <input type="text" id="goal" name="goal" class="form-control" value="{{ mentee_to_edit[3] if mentee_to_edit else '' }}">
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">{{ 'Save changes' if mentee_to_edit else 'Add mentee' }}</button>
+                {% if mentee_to_edit %}
+                <a href="{{ url_for('mentees') }}" class="btn btn-outline-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h2 class="h5 mb-3">Your mentees</h2>
+        {% if mentees %}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Goal</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mentee in mentees %}
+                    <tr>
+                        <td>{{ mentee[1] }}</td>
+                        <td>{{ mentee[2] }}</td>
+                        <td>{{ mentee[3] or 'Not set' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('mentees', edit=mentee[0]) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+
+                            
+                            <form method="POST" action="{{ url_for('delete_mentee', mentee_id=mentee[0]) }}" class="d-inline" onsubmit="return confirm('Delete this mentee? This cannot be undone.');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No mentees are assigned yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

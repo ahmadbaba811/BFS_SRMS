@@ -1,9 +1,11 @@
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, flash, redirect, render_template, request, session, url_for
+import re
 import sqlite3
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
 DB_PATH = 'db/srms_db.db'
+EMAIL_REGEX = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
 app = Flask(__name__)
@@ -188,6 +190,111 @@ def achievements():
     ''', (session['person_id'],)).fetchall() if session['user_type'] == 'Mentee' else []
     conn.close()
     return render_template('achievements.html', achievements=achievements)
+
+@app.route('/mentees')
+def mentees():
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session['user_type'] != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    edit_id = request.args.get('edit')
+    mentee_to_edit = None
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT Mentee.MenteeID, Mentee.Name, Mentee.Email, Mentee.Goal
+        FROM Mentee
+        INNER JOIN Match ON Mentee.MenteeID = Match.MenteeID
+        WHERE Match.MentorID = ?
+        ORDER BY Mentee.Name
+    ''', (session['person_id'],))
+
+    mentee_list = cursor.fetchall()
+
+    if edit_id:
+        cursor.execute('SELECT MenteeID, Name, Email, Goal FROM Mentee WHERE MenteeID = ?', (edit_id,))
+        mentee_to_edit = cursor.fetchone()
+        # fectchall = [{},{},{}]
+        # fetchone = {}
+    conn.close()
+
+    return render_template('mentees.html', mentees=mentee_list, mentee_to_edit=mentee_to_edit)
+
+@app.route('/mentees/add', methods=['POST'])
+def add_mentee():
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    name = request.form.get('name', '')
+    email = request.form.get('email', '').strip()
+    goal = request.form.get('goal', '') 
+
+    if not name or not email:
+        flash('Name and email are required.', 'danger')
+        return redirect(url_for('mentees'))
+
+    if not EMAIL_REGEX.match(email):
+        flash('Please enter a valid email address.', 'danger')
+        return redirect(url_for('mentees'))
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO Mentee (Name, Email, Goal) VALUES (?, ?, ?)', (name, email, goal))
+    mentee_id = cursor.lastrowid
+    
+    cursor.execute('''
+        INSERT INTO Match (ProgramID, MentorID, MenteeID)
+        SELECT Match.ProgramID, ?, ?
+        FROM Match WHERE Match.MentorID = ? LIMIT 1
+    ''', (session['person_id'], mentee_id, session['person_id']))
+    conn.commit()
+    conn.close()
+
+    flash('Mentee added successfully.', 'success')
+    return redirect(url_for('mentees'))
+
+@app.route('/mentees/<int:mentee_id>/edit', methods=['POST'])
+def edit_mentee(mentee_id):
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    name = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip()
+    goal = request.form.get('goal', '').strip()
+
+    if not name or not email:
+        flash('Name and email are required.', 'danger')
+        return redirect(url_for('mentees', edit=mentee_id))
+
+    if not EMAIL_REGEX.match(email):
+        flash('Please enter a valid email address.', 'danger')
+        return redirect(url_for('mentees', edit=mentee_id))
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE Mentee SET Name = ?, Email = ?, Goal = ? WHERE MenteeID = ?', (name, email, goal, mentee_id))
+    conn.commit()
+    conn.close()
+
+    flash('Mentee updated successfully.', 'success')
+    return redirect(url_for('mentees'))
+
+@app.route('/mentees/<int:mentee_id>/delete', methods=['POST'])
+def delete_mentee(mentee_id):
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM Match WHERE MenteeID = ?', (mentee_id,))
+    cursor.execute('DELETE FROM Mentee WHERE MenteeID = ?', (mentee_id,))
+    conn.commit()
+    conn.close()
+
+    flash('Mentee deleted successfully.', 'success')
+    return redirect(url_for('mentees'))
 
 @app.route('/logout')
 def logout():
