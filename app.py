@@ -296,6 +296,105 @@ def delete_mentee(mentee_id):
     flash('Mentee deleted successfully.', 'success')
     return redirect(url_for('mentees'))
 
+@app.route('/mentors')
+def mentors():
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session['user_type'] != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    mentor_to_edit = None
+    edit_id = request.args.get('edit')
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT MentorID, Name, Email, Expertise FROM Mentor ORDER BY Name')
+    mentor_list = cursor.fetchall()
+
+    if edit_id:
+        cursor.execute('SELECT MentorID, Name, Email, Expertise FROM Mentor WHERE MentorID = ?', (edit_id,))
+        mentor_to_edit = cursor.fetchone()
+    conn.close()
+
+    return render_template('mentors.html', mentors=mentor_list, mentor_to_edit=mentor_to_edit)
+
+@app.route('/mentors/add', methods=['POST'])
+def add_mentor():
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    name = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip()
+    expertise = request.form.get('expertise', '').strip()
+
+    if not name or not email:
+        flash('Name and email are required.', 'danger')
+        return redirect(url_for('mentors'))
+
+    if not EMAIL_REGEX.match(email):
+        flash('Please enter a valid email address.', 'danger')
+        return redirect(url_for('mentors'))
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('INSERT INTO Mentor (Name, Email, Expertise) VALUES (?, ?, ?)', (name, email, expertise))
+    conn.commit()
+    conn.close()
+
+    flash('Mentor added successfully.', 'success')
+    return redirect(url_for('mentors'))
+
+@app.route('/mentors/<int:mentor_id>/edit', methods=['POST'])
+def edit_mentor(mentor_id):
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    name = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip()
+    expertise = request.form.get('expertise', '').strip()
+
+    if not name or not email:
+        flash('Name and email are required.', 'danger')
+        return redirect(url_for('mentors', edit=mentor_id))
+
+    if not EMAIL_REGEX.match(email):
+        flash('Please enter a valid email address.', 'danger')
+        return redirect(url_for('mentors', edit=mentor_id))
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('UPDATE Mentor SET Name = ?, Email = ?, Expertise = ? WHERE MentorID = ?', (name, email, expertise, mentor_id))
+    conn.commit()
+    conn.close()
+
+    flash('Mentor updated successfully.', 'success')
+    return redirect(url_for('mentors'))
+
+@app.route('/mentors/<int:mentor_id>/delete', methods=['POST'])
+def delete_mentor(mentor_id):
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM Feedback
+        WHERE MeetingID IN (
+            SELECT MeetingID FROM Meeting
+            WHERE MatchID IN (SELECT MatchID FROM Match WHERE MentorID = ?)
+        )
+    ''', (mentor_id,))
+    cursor.execute('DELETE FROM Meeting WHERE MatchID IN (SELECT MatchID FROM Match WHERE MentorID = ?)', (mentor_id,))
+    cursor.execute('DELETE FROM Match WHERE MentorID = ?', (mentor_id,))
+    cursor.execute('DELETE FROM Achievement WHERE MentorID = ?', (mentor_id,))
+    cursor.execute('DELETE FROM GroupMentor WHERE MentorID = ?', (mentor_id,))
+    cursor.execute('DELETE FROM Recognition WHERE MentorID = ?', (mentor_id,))
+    cursor.execute("DELETE FROM Login WHERE MentorID = ? AND UserType = 'Mentor'", (mentor_id,))
+    cursor.execute('DELETE FROM Mentor WHERE MentorID = ?', (mentor_id,))
+    conn.commit()
+    conn.close()
+
+    flash('Mentor deleted successfully.', 'success')
+    return redirect(url_for('mentors'))
+
 @app.route('/logout')
 def logout():
     session.clear()

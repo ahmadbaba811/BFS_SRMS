@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Mentors{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Mentors</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h2 class="h5 mb-3">{{ 'Edit mentor' if mentor_to_edit else 'Add a mentor' }}</h2>
+        <form method="POST" action="{{ url_for('edit_mentor', mentor_id=mentor_to_edit[0]) if mentor_to_edit else url_for('add_mentor') }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="name" class="form-label">Name</label>
+                    <input type="text" id="name" name="name" class="form-control" value="{{ mentor_to_edit[1] if mentor_to_edit else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" id="email" name="email" class="form-control" value="{{ mentor_to_edit[2] if mentor_to_edit else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="expertise" class="form-label">Expertise</label>
+                    <input type="text" id="expertise" name="expertise" class="form-control" value="{{ mentor_to_edit[3] if mentor_to_edit else '' }}">
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">{{ 'Save changes' if mentor_to_edit else 'Add mentor' }}</button>
+                {% if mentor_to_edit %}
+                <a href="{{ url_for('mentors') }}" class="btn btn-outline-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h2 class="h5 mb-3">All mentors</h2>
+        {% if mentors %}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Expertise</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mentor in mentors %}
+                    <tr>
+                        <td>{{ mentor[1] }}</td>
+                        <td>{{ mentor[2] }}</td>
+                        <td>{{ mentor[3] or 'Not set' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('mentors', edit=mentor[0]) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                            <form method="POST" action="{{ url_for('delete_mentor', mentor_id=mentor[0]) }}" class="d-inline" onsubmit="return confirm('Delete this mentor and their related records? This cannot be undone.');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No mentors have been added yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
