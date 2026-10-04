@@ -37,12 +37,15 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('achievements') }}">Achievements</a>
                     </li>
-                    {% if session.get('user_type') == 'Mentor' %}
+                    {% if session.get('user_type') == 'SuperAdmin' %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('mentees') }}">Mentees</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('mentors') }}">Mentors</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('matches') }}">Matches</a>
                     </li>
                     {% endif %}
                     <li class="nav-item">

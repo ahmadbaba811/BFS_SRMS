@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Super Admin Dashboard{% endblock %}
+{% block content %}
+<h1 class="mb-4">Welcome, {{ user_name }}</h1>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <div class="display-6">{{ counts.mentors }}</div>
+                <div class="text-muted">Mentors</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <div class="display-6">{{ counts.mentees }}</div>
+                <div class="text-muted">Mentees</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <div class="display-6">{{ counts.matches }}</div>
+                <div class="text-muted">Matches</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <div class="display-6">{{ counts.programs }}</div>
+                <div class="text-muted">Programs</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="h5 mb-0">Mentees without a mentor</h2>
+                    <a href="{{ url_for('matches') }}" class="btn btn-sm btn-primary">Manage matches</a>
+                </div>
+                {% if unmatched %}
+                <ul class="list-group list-group-flush">
+                    {% for mentee in unmatched %}
+                    <li class="list-group-item px-0">{{ mentee[0] }} <small class="text-muted">{{ mentee[1] }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">Every mentee has a mentor.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Recent matches</h2>
+                {% if recent_matches %}
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Mentor</th>
+                            <th>Mentee</th>
+                            <th>Program</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in recent_matches %}
+                        <tr>
+                            <td>{{ m[0] }}</td>
+                            <td>{{ m[1] }}</td>
+                            <td>{{ m[2] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">No matches yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
