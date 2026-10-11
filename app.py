@@ -1,6 +1,9 @@
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from datetime import date
 import re
 import sqlite3
+
+from emailer import send_email
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -197,20 +200,235 @@ def programs():
 def meetings():
     if 'user_name' not in session:
         return redirect(url_for('login'))
+    if session.get('user_type') not in ('Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+
     conn = sqlite3.connect(DB_PATH)
     if session['user_type'] == 'Mentor':
-        query = '''SELECT Meeting.MeetingDate, Mentee.Name, Meeting.Notes
-                   FROM Meeting INNER JOIN Match ON Meeting.MatchID = Match.MatchID
-                   INNER JOIN Mentee ON Match.MenteeID = Mentee.MenteeID
-                   WHERE Match.MentorID = ? ORDER BY Meeting.MeetingDate DESC'''
+        match_query = '''SELECT Match.MatchID, Mentee.Name, Program.ProgramName
+                         FROM Match
+                         INNER JOIN Mentee ON Match.MenteeID = Mentee.MenteeID
+                         INNER JOIN Program ON Match.ProgramID = Program.ProgramID
+                         WHERE Match.MentorID = ? ORDER BY Mentee.Name, Program.ProgramName'''
+        meeting_query = '''SELECT Meeting.MeetingID, Meeting.MeetingDate, Mentee.Name, Meeting.Notes,
+                                  Feedback.Rating, Feedback.Comments,
+                                  CASE WHEN date(Meeting.MeetingDate) <= date('now') THEN 1 ELSE 0 END,
+                                  CASE WHEN date(Meeting.MeetingDate) < date('now') OR Feedback.FeedbackID IS NOT NULL THEN 1 ELSE 0 END
+                           FROM Meeting
+                           INNER JOIN Match ON Meeting.MatchID = Match.MatchID
+                           INNER JOIN Mentee ON Match.MenteeID = Mentee.MenteeID
+                           LEFT JOIN Feedback ON Meeting.MeetingID = Feedback.MeetingID
+                           WHERE Match.MentorID = ? ORDER BY Meeting.MeetingDate DESC'''
     else:
-        query = '''SELECT Meeting.MeetingDate, Mentor.Name, Meeting.Notes
-                   FROM Meeting INNER JOIN Match ON Meeting.MatchID = Match.MatchID
-                   INNER JOIN Mentor ON Match.MentorID = Mentor.MentorID
-                   WHERE Match.MenteeID = ? ORDER BY Meeting.MeetingDate DESC'''
-    meetings = conn.execute(query, (session['person_id'],)).fetchall()
+        match_query = '''SELECT Match.MatchID, Mentor.Name, Program.ProgramName
+                         FROM Match
+                         INNER JOIN Mentor ON Match.MentorID = Mentor.MentorID
+                         INNER JOIN Program ON Match.ProgramID = Program.ProgramID
+                         WHERE Match.MenteeID = ? ORDER BY Mentor.Name, Program.ProgramName'''
+        meeting_query = '''SELECT Meeting.MeetingID, Meeting.MeetingDate, Mentor.Name, Meeting.Notes,
+                                  Feedback.Rating, Feedback.Comments,
+                                  CASE WHEN date(Meeting.MeetingDate) <= date('now') THEN 1 ELSE 0 END,
+                                  CASE WHEN date(Meeting.MeetingDate) < date('now') OR Feedback.FeedbackID IS NOT NULL THEN 1 ELSE 0 END
+                           FROM Meeting
+                           INNER JOIN Match ON Meeting.MatchID = Match.MatchID
+                           INNER JOIN Mentor ON Match.MentorID = Mentor.MentorID
+                           LEFT JOIN Feedback ON Meeting.MeetingID = Feedback.MeetingID
+                           WHERE Match.MenteeID = ? ORDER BY Meeting.MeetingDate DESC'''
+    person_id = session['person_id']
+    matches = conn.execute(match_query, (person_id,)).fetchall()
+    meetings = conn.execute(meeting_query, (person_id,)).fetchall()
+    edit_meeting_id = request.args.get('edit', type=int)
+    if edit_meeting_id and not any(
+        meeting[0] == edit_meeting_id and not meeting[7] for meeting in meetings
+    ):
+        edit_meeting_id = None
     conn.close()
-    return render_template('meetings.html', meetings=meetings, user_type=session['user_type'])
+    return render_template('meetings.html', meetings=meetings, matches=matches,
+                           user_type=session['user_type'], edit_meeting_id=edit_meeting_id)
+
+def notify_other_person(conn, match_id, action, meeting_date, notes, old_date=None):
+    """Email the other person in the match about a scheduled or changed meeting."""
+    row = conn.execute('''SELECT Mentor.Name, Mentor.Email, Mentee.Name, Mentee.Email
+                          FROM Match
+                          INNER JOIN Mentor ON Match.MentorID = Mentor.MentorID
+                          INNER JOIN Mentee ON Match.MenteeID = Mentee.MenteeID
+                          WHERE Match.MatchID = ?''', (match_id,)).fetchone()
+    if not row:
+        return False
+    mentor_name, mentor_email, mentee_name, mentee_email = row
+    if session['user_type'] == 'Mentor':
+        recipient_name, recipient_email, sender_name = mentee_name, mentee_email, mentor_name
+    else:
+        recipient_name, recipient_email, sender_name = mentor_name, mentor_email, mentee_name
+
+    if action == 'scheduled':
+        subject = f'New meeting scheduled for {meeting_date}'
+        details = f'{sender_name} has scheduled a meeting with you on {meeting_date}.'
+    else:
+        subject = f'Meeting updated: now {meeting_date}'
+        details = f'{sender_name} has updated your meeting (previously {old_date}). It is now on {meeting_date}.'
+    body = f'Hello {recipient_name},\n\n{details}\nNotes: {notes or "None"}\n\nSRMS Mentorship Platform'
+    return send_email(recipient_email, subject, body)
+
+@app.route('/meetings/add', methods=['POST'])
+def add_meeting():
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') not in ('Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+
+    match_id = request.form.get('match_id', type=int)
+    meeting_date = request.form.get('meeting_date', '').strip()
+    notes = request.form.get('notes', '').strip()
+    try:
+        meeting_date = date.fromisoformat(meeting_date).isoformat()
+    except ValueError:
+        flash('Please enter a valid meeting date.', 'danger')
+        return redirect(url_for('meetings'))
+
+    if not match_id:
+        flash('Please choose one of your mentorship matches.', 'danger')
+        return redirect(url_for('meetings'))
+
+    conn = sqlite3.connect(DB_PATH)
+    if session['user_type'] == 'Mentor':
+        match = conn.execute(
+            'SELECT 1 FROM Match WHERE MatchID = ? AND MentorID = ?',
+            (match_id, session['person_id'])
+        ).fetchone()
+    else:
+        match = conn.execute(
+            'SELECT 1 FROM Match WHERE MatchID = ? AND MenteeID = ?',
+            (match_id, session['person_id'])
+        ).fetchone()
+
+    if not match:
+        conn.close()
+        flash('You can only add meetings for your own mentorship matches.', 'danger')
+        return redirect(url_for('meetings'))
+
+    conn.execute(
+        'INSERT INTO Meeting (MatchID, MeetingDate, Notes) VALUES (?, ?, ?)',
+        (match_id, meeting_date, notes)
+    )
+    conn.commit()
+    emailed = notify_other_person(conn, match_id, 'scheduled', meeting_date, notes)
+    conn.close()
+
+    flash('Meeting added successfully.' + (' The other person was notified by email.' if emailed else ' (Email notification was not sent.)'), 'success')
+    return redirect(url_for('meetings'))
+
+@app.route('/meetings/<int:meeting_id>/edit', methods=['POST'])
+def edit_meeting(meeting_id):
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') not in ('Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+
+    meeting_date = request.form.get('meeting_date', '').strip()
+    notes = request.form.get('notes', '').strip()
+    try:
+        meeting_date = date.fromisoformat(meeting_date).isoformat()
+    except ValueError:
+        flash('Please enter a valid meeting date.', 'danger')
+        return redirect(url_for('meetings', edit=meeting_id))
+
+    person_column = 'MentorID' if session['user_type'] == 'Mentor' else 'MenteeID'
+    conn = sqlite3.connect(DB_PATH)
+    old = conn.execute('SELECT MatchID, MeetingDate FROM Meeting WHERE MeetingID = ?', (meeting_id,)).fetchone()
+    cursor = conn.execute(f'''
+        UPDATE Meeting
+        SET MeetingDate = ?, Notes = ?
+        WHERE MeetingID = ?
+          AND date(MeetingDate) >= date('now')
+          AND NOT EXISTS (SELECT 1 FROM Feedback WHERE Feedback.MeetingID = Meeting.MeetingID)
+          AND date(?) >= date('now')
+          AND MatchID IN (SELECT MatchID FROM Match WHERE {person_column} = ?)
+    ''', (meeting_date, notes, meeting_id, meeting_date, session['person_id']))
+    if cursor.rowcount == 0:
+        conn.close()
+        flash('Only upcoming meetings in your own matches can be edited, and the new date must be today or later.', 'danger')
+        return redirect(url_for('meetings'))
+
+    conn.commit()
+    emailed = notify_other_person(conn, old[0], 'updated', meeting_date, notes, old[1])
+    conn.close()
+    flash('Meeting updated successfully.' + (' The other person was notified by email.' if emailed else ' (Email notification was not sent.)'), 'success')
+    return redirect(url_for('meetings'))
+
+@app.route('/meetings/<int:meeting_id>/delete', methods=['POST'])
+def delete_meeting(meeting_id):
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') not in ('Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+
+    person_column = 'MentorID' if session['user_type'] == 'Mentor' else 'MenteeID'
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('BEGIN IMMEDIATE')
+    meeting = conn.execute(f'''
+        SELECT MeetingID FROM Meeting
+        WHERE MeetingID = ?
+          AND date(MeetingDate) >= date('now')
+          AND NOT EXISTS (SELECT 1 FROM Feedback WHERE Feedback.MeetingID = Meeting.MeetingID)
+          AND MatchID IN (SELECT MatchID FROM Match WHERE {person_column} = ?)
+    ''', (meeting_id, session['person_id'])).fetchone()
+    if not meeting:
+        conn.close()
+        flash('Only upcoming meetings in your own matches can be deleted.', 'danger')
+        return redirect(url_for('meetings'))
+
+    conn.execute('DELETE FROM Feedback WHERE MeetingID = ?', (meeting_id,))
+    conn.execute('DELETE FROM Meeting WHERE MeetingID = ?', (meeting_id,))
+    conn.commit()
+    conn.close()
+    flash('Meeting and its feedback deleted successfully.', 'success')
+    return redirect(url_for('meetings'))
+
+@app.route('/meetings/<int:meeting_id>/feedback', methods=['POST'])
+def add_feedback(meeting_id):
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') != 'Mentee':
+        return redirect(url_for('dashboard'))
+
+    rating = request.form.get('rating', type=int)
+    comments = request.form.get('comments', '').strip()
+    if rating not in range(1, 6):
+        flash('Please choose a rating from 1 to 5.', 'danger')
+        return redirect(url_for('meetings'))
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('BEGIN IMMEDIATE')
+    meeting = conn.execute('''
+        SELECT 1
+        FROM Meeting
+        INNER JOIN Match ON Meeting.MatchID = Match.MatchID
+        WHERE Meeting.MeetingID = ? AND Match.MenteeID = ?
+          AND date(Meeting.MeetingDate) <= date('now')
+    ''', (meeting_id, session['person_id'])).fetchone()
+    if not meeting:
+        conn.close()
+        flash('Feedback can only be submitted for your own completed meetings.', 'danger')
+        return redirect(url_for('meetings'))
+
+    existing_feedback = conn.execute(
+        'SELECT 1 FROM Feedback WHERE MeetingID = ?', (meeting_id,)
+    ).fetchone()
+    if existing_feedback:
+        conn.close()
+        flash('Feedback has already been submitted for this meeting.', 'warning')
+        return redirect(url_for('meetings'))
+
+    conn.execute(
+        'INSERT INTO Feedback (MeetingID, Rating, Comments) VALUES (?, ?, ?)',
+        (meeting_id, rating, comments)
+    )
+    conn.commit()
+    conn.close()
+
+    flash('Feedback submitted successfully.', 'success')
+    return redirect(url_for('meetings'))
 
 @app.route('/achievements')
 def achievements():

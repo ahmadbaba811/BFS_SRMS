@@ -1,9 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Meetings{% endblock %}
 {% block content %}
-<h1 class="mb-4">Mentoring meetings</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-muted mb-1">Your mentorship sessions</p>
+        <h1 class="mb-0">Meetings and feedback</h1>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4" id="new-meeting">
+    <div class="card-body">
+        <h2 class="h4">Add a meeting</h2>
+        {% if matches %}
+        <form method="post" action="{{ url_for('add_meeting') }}" class="form-row">
+            <div class="form-group col-md-5">
+                <label for="match_id">Mentorship match</label>
+                <select class="form-control" id="match_id" name="match_id" required>
+                    <option value="">Choose a match</option>
+                    {% for match in matches %}
+                    <option value="{{ match[0] }}">{{ match[1] }} &mdash; {{ match[2] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group col-md-3">
+                <label for="meeting_date">Meeting date</label>
+                <input class="form-control" id="meeting_date" name="meeting_date" type="date" required>
+            </div>
+            <div class="form-group col-12">
+                <label for="notes">Notes <span class="text-muted">(optional)</span></label>
+                <textarea class="form-control" id="notes" name="notes" rows="3"
+                          placeholder="Add a short summary or topics to discuss."></textarea>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary" type="submit">Save meeting</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">You need an assigned mentorship match before you can add a meeting.</p>
+        {% endif %}
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <div class="card-body">
+        <h2 class="h4">Your meetings</h2>
         <div class="table-responsive">
             <table class="table align-middle mb-0">
                 <thead>
@@ -11,16 +51,97 @@
                         <th>Date</th>
                         <th>{% if user_type == 'Mentor' %}Mentee{% else %}Mentor{% endif %}</th>
                         <th>Notes</th>
+                        <th id="feedback">Feedback</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for meeting in meetings %}<tr>
-                        <td>{{ meeting[0] }}</td>
+                    {% for meeting in meetings %}
+                    <tr>
+                        {% if edit_meeting_id == meeting[0] and not meeting[7] %}
+                        <td colspan="5">
+                            <form method="post" action="{{ url_for('edit_meeting', meeting_id=meeting[0]) }}">
+                                <div class="form-row align-items-end">
+                                    <div class="form-group col-md-3">
+                                        <label for="edit-date-{{ meeting[0] }}">Meeting date</label>
+                                        <input class="form-control" id="edit-date-{{ meeting[0] }}"
+                                               name="meeting_date" type="date" value="{{ meeting[1] }}" required>
+                                    </div>
+                                    <div class="form-group col-md-6">
+                                        <label for="edit-notes-{{ meeting[0] }}">Notes</label>
+                                        <textarea class="form-control" id="edit-notes-{{ meeting[0] }}"
+                                                  name="notes" rows="2">{{ meeting[3] or '' }}</textarea>
+                                    </div>
+                                    <div class="form-group col-md-3">
+                                        <button class="btn btn-primary" type="submit">Save changes</button>
+                                        <a class="btn btn-outline-secondary"
+                                           href="{{ url_for('meetings') }}">Cancel</a>
+                                    </div>
+                                </div>
+                            </form>
+                        </td>
+                        {% else %}
                         <td>{{ meeting[1] }}</td>
-                        <td>{{ meeting[2] or 'No notes added.' }}</td>
-                    </tr>{% else %}<tr>
-                        <td colspan="3" class="text-muted">No meetings recorded yet.</td>
-                    </tr>{% endfor %}
+                        <td>{{ meeting[2] }}</td>
+                        <td>{{ meeting[3] or 'No notes added.' }}</td>
+                       
+                        <td>
+                            {% if meeting[4] %}
+                            <strong>&#9733; {{ meeting[4] }}/5</strong>
+                            {% if meeting[5] %}<br><span>{{ meeting[5] }}</span>{% endif %}
+                            {% elif user_type == 'Mentee' and meeting[6] %}
+                            <form method="post" action="{{ url_for('add_feedback', meeting_id=meeting[0]) }}">
+                                <div class="form-group">
+                                    <label for="rating-{{ meeting[0] }}">Rate this meeting</label>
+                                    <select class="form-control form-control-sm" id="rating-{{ meeting[0] }}"
+                                        name="rating" required>
+                                        <option value="">Choose 1 to 5</option>
+                                        <option value="5">5 - Excellent</option>
+                                        <option value="4">4 - Good</option>
+                                        <option value="3">3 - Okay</option>
+                                        <option value="2">2 - Could be better</option>
+                                        <option value="1">1 - Not helpful</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="comments-{{ meeting[0] }}">
+                                        Comment <span class="text-muted">(optional)</span>
+                                    </label>
+                                    <textarea class="form-control form-control-sm"
+                                              id="comments-{{ meeting[0] }}" name="comments" rows="2"
+                                              placeholder="What went well?"></textarea>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" type="submit">Submit feedback</button>
+                            </form>
+                            {% elif user_type == 'Mentee' %}
+                            <span class="text-muted">Available after the meeting</span>
+                            {% else %}
+                            <span class="text-muted">Not submitted</span>
+                            {% endif %}
+                        </td>
+
+
+                        
+                        <td>
+                            {% if not meeting[7] %}
+                            <a class="btn btn-sm btn-outline-primary mb-1"
+                               href="{{ url_for('meetings', edit=meeting[0]) }}">Edit</a>
+                            
+                               <form method="post" action="{{ url_for('delete_meeting', meeting_id=meeting[0]) }}"
+                                  onsubmit="return confirm('Delete this meeting and its feedback?');">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                            </form>
+                            {% else %}
+                            <span class="text-muted">Schedule locked</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-muted">No meetings recorded yet. Add your first meeting above.</td>
+                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>

@@ -65,10 +65,14 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <h2 class="h4">Recent meetings</h2>
-                {% if meetings %}<ul class="list-group list-group-flush">{% for meeting in meetings[:5] %}<li
-                        class="list-group-item px-0"><strong>{{ meeting[0] }}</strong> with {{ meeting[1] }}<br><small
-                            class="text-muted">{{ meeting[2] or 'No notes added.' }}</small></li>{% endfor %}</ul>{%
-                else %}<p class="text-muted">No meetings recorded yet.</p>{% endif %}
+                {% if meetings %}
+                <ul class="list-group list-group-flush">{% for meeting in meetings[:5] %}
+                    <li class="list-group-item px-0">
+                        <strong>{{ meeting[0] }}</strong> with {{ meeting[1] }}<br>
+                        <small class="text-muted">{{ meeting[2] or 'No notes added.' }}</small>
+                    </li>{% endfor %}
+                </ul>
+                {%else %}<p class="text-muted">No meetings recorded yet.</p>{% endif %}
             </div>
         </div>
     </div>
@@ -89,7 +93,8 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <h2 class="h5">Recent feedback</h2>{% if feedback_summary and feedback_summary[1] %}<p class="mb-1">
-                    <strong>&#9733; {{ '%.1f'|format(feedback_summary[0]) }} average</strong></p>
+                    <strong>&#9733; {{ '%.1f'|format(feedback_summary[0]) }} average</strong>
+                </p>
                 <p class="text-muted mb-0">{{ feedback_summary[1] }} session{{ 's' if feedback_summary[1] != 1 else ''
                     }} rated</p>{% else %}<p class="text-muted mb-0">No feedback has been recorded yet.</p>{% endif %}
             </div>
@@ -101,7 +106,8 @@
     <div class="card-body">
         <h2 class="h5 mb-3">Quick actions</h2>
         <div class="d-flex flex-wrap gap-3">
-            <a class="btn btn-primary" href="{{ url_for('meetings') }}">View meetings</a>
+            <a class="btn btn-primary" href="{{ url_for('meetings') }}#new-meeting">Add a meeting</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('meetings') }}#feedback">Give feedback</a>
             <a class="btn btn-outline-primary" href="{{ url_for('programs') }}">View programs</a>
             <a class="btn btn-outline-primary" href="{{ url_for('achievements') }}">View achievements</a>
         </div>
