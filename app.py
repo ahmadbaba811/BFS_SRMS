@@ -434,13 +434,118 @@ def add_feedback(meeting_id):
 def achievements():
     if 'user_name' not in session:
         return redirect(url_for('login'))
+    user_type = session.get('user_type')
+    if user_type not in ('Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
     conn = sqlite3.connect(DB_PATH)
-    achievements = conn.execute('''
-        SELECT AchievementType, Title, Organisation, AchievementDate
-        FROM Achievement WHERE MenteeID = ? ORDER BY AchievementDate DESC
-    ''', (session['person_id'],)).fetchall() if session['user_type'] == 'Mentee' else []
+    # Verified: 0/NULL = pending, 1 = approved, 2 = rejected
+    if user_type == 'Mentee':
+        achievements = conn.execute('''
+            SELECT Achievement.AchievementID, Achievement.AchievementType, Achievement.Title,
+                   Achievement.Organisation, Achievement.AchievementDate,
+                   COALESCE(Achievement.Verified, 0), Mentor.Name
+            FROM Achievement LEFT JOIN Mentor ON Achievement.MentorID = Mentor.MentorID
+            WHERE Achievement.MenteeID = ? ORDER BY Achievement.AchievementDate DESC
+        ''', (session['person_id'],)).fetchall()
+        people = conn.execute('''
+            SELECT DISTINCT Mentor.MentorID, Mentor.Name FROM Match
+            INNER JOIN Mentor ON Match.MentorID = Mentor.MentorID
+            WHERE Match.MenteeID = ? ORDER BY Mentor.Name
+        ''', (session['person_id'],)).fetchall()
+    else:
+        achievements = conn.execute('''
+            SELECT Achievement.AchievementID, Achievement.AchievementType, Achievement.Title,
+                   Achievement.Organisation, Achievement.AchievementDate,
+                   COALESCE(Achievement.Verified, 0), Mentee.Name
+            FROM Achievement INNER JOIN Mentee ON Achievement.MenteeID = Mentee.MenteeID
+            WHERE Achievement.MentorID = ?
+              AND Achievement.MenteeID IN (SELECT MenteeID FROM Match WHERE MentorID = ?)
+            ORDER BY COALESCE(Achievement.Verified, 0) ASC, Achievement.AchievementDate DESC
+        ''', (session['person_id'], session['person_id'])).fetchall()
+        people = conn.execute('''
+            SELECT DISTINCT Mentee.MenteeID, Mentee.Name FROM Match
+            INNER JOIN Mentee ON Match.MenteeID = Mentee.MenteeID
+            WHERE Match.MentorID = ? ORDER BY Mentee.Name
+        ''', (session['person_id'],)).fetchall()
     conn.close()
-    return render_template('achievements.html', achievements=achievements)
+    return render_template('achievements.html', achievements=achievements, people=people,
+                           user_type=user_type, today=date.today().isoformat())
+
+ACHIEVEMENT_TYPES = ['CV Job-Ready', 'First Job Application', 'First Interview', 'Job Offer',
+                     'Job', 'Internship', 'Certification', 'Training', 'Project', 'Other']
+
+@app.route('/achievements/add', methods=['POST'])
+def add_achievement():
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    user_type = session.get('user_type')
+    if user_type not in ('Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+
+    achievement_type = request.form.get('achievement_type', '').strip()
+    title = request.form.get('title', '').strip()
+    organisation = request.form.get('organisation', '').strip()
+    achievement_date = request.form.get('achievement_date', '').strip()
+    other_id = request.form.get('person_id', type=int)
+    try:
+        parsed_date = date.fromisoformat(achievement_date)
+    except ValueError:
+        parsed_date = None
+
+    if achievement_type not in ACHIEVEMENT_TYPES or not title or not other_id or not parsed_date:
+        flash('Please fill in the type, title, date and person.', 'danger')
+        return redirect(url_for('achievements'))
+    if parsed_date > date.today():
+        flash('Achievement date cannot be in the future.', 'danger')
+        return redirect(url_for('achievements'))
+
+    if user_type == 'Mentee':
+        mentee_id, mentor_id, verified = session['person_id'], other_id, 0
+    else:
+        mentee_id, mentor_id, verified = other_id, session['person_id'], 1
+
+    conn = sqlite3.connect(DB_PATH)
+    matched = conn.execute('SELECT 1 FROM Match WHERE MenteeID = ? AND MentorID = ?',
+                           (mentee_id, mentor_id)).fetchone()
+    if not matched:
+        conn.close()
+        flash('You can only record achievements for people you are matched with.', 'danger')
+        return redirect(url_for('achievements'))
+    conn.execute('''INSERT INTO Achievement
+                    (MenteeID, MentorID, AchievementType, Title, Organisation, AchievementDate, Verified)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                 (mentee_id, mentor_id, achievement_type, title, organisation or None,
+                  parsed_date.isoformat(), verified))
+    conn.commit()
+    conn.close()
+    flash('Achievement recorded.' if verified else 'Achievement submitted for your mentor\'s approval.',
+          'success')
+    return redirect(url_for('achievements'))
+
+@app.route('/achievements/<int:achievement_id>/review', methods=['POST'])
+def review_achievement(achievement_id):
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') != 'Mentor':
+        return redirect(url_for('dashboard'))
+
+    decision = request.form.get('decision')
+    if decision not in ('approve', 'reject'):
+        flash('Invalid decision.', 'danger')
+        return redirect(url_for('achievements'))
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.execute(
+        'UPDATE Achievement SET Verified = ? WHERE AchievementID = ? AND MentorID = ?',
+        (1 if decision == 'approve' else 2, achievement_id, session['person_id'])
+    )
+    conn.commit()
+    conn.close()
+    if cursor.rowcount:
+        flash('Achievement %s.' % ('approved' if decision == 'approve' else 'rejected'), 'success')
+    else:
+        flash('Achievement not found.', 'danger')
+    return redirect(url_for('achievements'))
 
 @app.route('/mentees')
 def mentees():
@@ -755,6 +860,129 @@ def delete_match(match_id):
 
     flash('Match removed successfully.', 'success')
     return redirect(url_for('matches'))
+
+# Searchable record types. Each "scope" limits what a Mentor / Mentee may see;
+# SuperAdmin sees everything. The first column is the link text on the results page.
+_MENTOR_MENTEES = 'SELECT MenteeID FROM Match WHERE MentorID = :pid'
+_MENTEE_MENTORS = 'SELECT MentorID FROM Match WHERE MenteeID = :pid'
+_MATCH_SCOPE = {'Mentor': 'x.MentorID = :pid', 'Mentee': 'x.MenteeID = :pid'}
+_MEETING_JOINS = ('LEFT JOIN Match x ON t.MatchID = x.MatchID '
+                  'LEFT JOIN Mentor mr ON x.MentorID = mr.MentorID '
+                  'LEFT JOIN Mentee me ON x.MenteeID = me.MenteeID')
+SEARCH_SPECS = [
+    {'key': 'program', 'title': 'Programs', 'id': 'p.ProgramID', 'from': 'Program p',
+     'columns': [('Program', 'p.ProgramName'), ('Start date', 'p.StartDate'), ('End date', 'p.EndDate')],
+     'scope': {'Mentor': 'p.ProgramID IN (SELECT ProgramID FROM Match WHERE MentorID = :pid)',
+               'Mentee': 'p.ProgramID IN (SELECT ProgramID FROM Match WHERE MenteeID = :pid)'}},
+    {'key': 'mentor', 'title': 'Mentors', 'id': 'm.MentorID', 'from': 'Mentor m',
+     'columns': [('Name', 'm.Name'), ('Email', 'm.Email'), ('Expertise', 'm.Expertise'),
+                 ('Joined', 'm.JoinedAt')],
+     'scope': {'Mentor': 'm.MentorID = :pid', 'Mentee': 'm.MentorID IN (%s)' % _MENTEE_MENTORS}},
+    {'key': 'mentee', 'title': 'Mentees', 'id': 'e.MenteeID', 'from': 'Mentee e',
+     'columns': [('Name', 'e.Name'), ('Email', 'e.Email'), ('Goal', 'e.Goal'), ('Joined', 'e.JoinedAt')],
+     'scope': {'Mentor': 'e.MenteeID IN (%s)' % _MENTOR_MENTEES, 'Mentee': 'e.MenteeID = :pid'}},
+    {'key': 'match', 'title': 'Matches', 'id': 'x.MatchID',
+     'from': ('Match x LEFT JOIN Mentor mr ON x.MentorID = mr.MentorID '
+              'LEFT JOIN Mentee me ON x.MenteeID = me.MenteeID '
+              'LEFT JOIN Program p ON x.ProgramID = p.ProgramID'),
+     'columns': [('Mentor', 'mr.Name'), ('Mentee', 'me.Name'), ('Program', 'p.ProgramName'),
+                 ('Matched on', 'x.MatchDate')],
+     'scope': _MATCH_SCOPE},
+    {'key': 'meeting', 'title': 'Meetings', 'id': 't.MeetingID', 'from': 'Meeting t ' + _MEETING_JOINS,
+     'columns': [('Date', 't.MeetingDate'), ('Mentor', 'mr.Name'), ('Mentee', 'me.Name'),
+                 ('Notes', 't.Notes')],
+     'scope': _MATCH_SCOPE},
+    {'key': 'feedback', 'title': 'Feedback', 'id': 'f.FeedbackID',
+     'from': 'Feedback f LEFT JOIN Meeting t ON f.MeetingID = t.MeetingID ' + _MEETING_JOINS,
+     'columns': [('Meeting date', 't.MeetingDate'), ('Mentor', 'mr.Name'), ('Mentee', 'me.Name'),
+                 ('Rating', 'f.Rating'), ('Comments', 'f.Comments'), ('Submitted', 'f.SubmittedAt')],
+     'scope': _MATCH_SCOPE},
+    {'key': 'achievement', 'title': 'Achievements', 'id': 'a.AchievementID',
+     'from': ('Achievement a LEFT JOIN Mentee me ON a.MenteeID = me.MenteeID '
+              'LEFT JOIN Mentor mr ON a.MentorID = mr.MentorID'),
+     'columns': [('Title', 'a.Title'), ('Type', 'a.AchievementType'), ('Mentee', 'me.Name'),
+                 ('Mentor', 'mr.Name'), ('Organisation', 'a.Organisation'), ('Date', 'a.AchievementDate'),
+                 ('Status', "CASE COALESCE(a.Verified, 0) WHEN 1 THEN 'Approved' "
+                            "WHEN 2 THEN 'Rejected' ELSE 'Pending' END")],
+     'scope': {'Mentor': 'a.MentorID = :pid', 'Mentee': 'a.MenteeID = :pid'}},
+    {'key': 'group', 'title': 'Mentorship groups', 'id': 'g.GroupID',
+     'from': 'MentorshipGroup g LEFT JOIN Program p ON g.ProgramID = p.ProgramID',
+     'columns': [('Group', 'g.GroupName'), ('Program', 'p.ProgramName'), ('Created', 'g.CreatedAt')],
+     'scope': {'Mentor': 'g.GroupID IN (SELECT GroupID FROM GroupMentor WHERE MentorID = :pid)',
+               'Mentee': 'g.GroupID IN (SELECT GroupID FROM GroupMentee WHERE MenteeID = :pid)'}},
+    {'key': 'recognition', 'title': 'Recognitions', 'id': 'r.RecognitionID',
+     'from': ('Recognition r LEFT JOIN Mentor mr ON r.MentorID = mr.MentorID '
+              'LEFT JOIN Mentee me ON r.MenteeID = me.MenteeID '
+              'LEFT JOIN Program p ON r.ProgramID = p.ProgramID'),
+     'columns': [('Type', 'r.RecognitionType'), ('Mentor', 'mr.Name'), ('Mentee', 'me.Name'),
+                 ('Program', 'p.ProgramName'), ('Month', 'r.Month'), ('Reason', 'r.Reason')],
+     'scope': {'Mentor': 'r.MentorID = :pid OR r.MenteeID IN (%s)' % _MENTOR_MENTEES,
+               'Mentee': 'r.MenteeID = :pid OR r.MentorID IN (%s)' % _MENTEE_MENTORS}},
+]
+SEARCH_SPECS_BY_KEY = {spec['key']: spec for spec in SEARCH_SPECS}
+SEARCH_LIMIT = 50
+
+def scope_clause(spec):
+    """SQL condition restricting a record type to what the current user may see."""
+    if session['user_type'] == 'SuperAdmin':
+        return '1 = 1'
+    return '(%s)' % spec['scope'][session['user_type']]
+
+@app.route('/search')
+def search():
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') not in ('SuperAdmin', 'Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+
+    term = request.args.get('q', '').strip()
+    sections = []
+    if term:
+        like = '%' + term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        conn = sqlite3.connect(DB_PATH)
+        for spec in SEARCH_SPECS:
+            select_cols = ', '.join(expr for _, expr in spec['columns'])
+            match_sql = ' OR '.join("COALESCE(CAST(%s AS TEXT), '') LIKE :q ESCAPE '\\'" % expr
+                                    for _, expr in spec['columns'])
+            rows = conn.execute(
+                'SELECT %s, %s FROM %s WHERE (%s) AND %s ORDER BY %s DESC LIMIT %d' % (
+                    spec['id'], select_cols, spec['from'], match_sql, scope_clause(spec),
+                    spec['id'], SEARCH_LIMIT),
+                {'q': like, 'pid': session['person_id']}
+            ).fetchall()
+            if rows:
+                sections.append({'key': spec['key'], 'title': spec['title'],
+                                 'headers': [label for label, _ in spec['columns']], 'rows': rows,
+                                 'limited': len(rows) == SEARCH_LIMIT})
+        conn.close()
+    return render_template('search.html', term=term, sections=sections,
+                           total=sum(len(s['rows']) for s in sections))
+
+@app.route('/record/<key>/<int:record_id>')
+def record_detail(key, record_id):
+    if 'user_name' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_type') not in ('SuperAdmin', 'Mentor', 'Mentee'):
+        return redirect(url_for('dashboard'))
+    spec = SEARCH_SPECS_BY_KEY.get(key)
+    if not spec:
+        flash('Unknown record type.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        'SELECT %s FROM %s WHERE %s = :id AND %s' % (
+            ', '.join(expr for _, expr in spec['columns']), spec['from'], spec['id'], scope_clause(spec)),
+        {'id': record_id, 'pid': session['person_id']}
+    ).fetchone()
+    conn.close()
+    if not row:
+        flash('That record was not found.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    fields = [(label, value) for (label, _), value in zip(spec['columns'], row)]
+    return render_template('record_detail.html', spec_title=spec['title'], fields=fields,
+                           heading=row[0] or '%s #%d' % (spec['title'], record_id))
 
 @app.route('/logout')
 def logout():

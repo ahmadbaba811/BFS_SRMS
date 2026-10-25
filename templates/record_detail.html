@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block content %}
+<p class="text-muted mb-1">{{ spec_title }}</p>
+<h1 class="mb-4">{{ heading }}</h1>
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <dl class="row mb-0">
+            {% for label, value in fields %}
+            <dt class="col-sm-3">{{ label }}</dt>
+            <dd class="col-sm-9">{{ value if value not in (none, '') else 'Not specified' }}</dd>
+            {% endfor %}
+        </dl>
+    </div>
+</div>
+<a href="javascript:history.back()" class="btn btn-outline-secondary">Back to results</a>
+{% endblock %}

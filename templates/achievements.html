@@ -1,27 +1,100 @@
 {% extends "base.html" %}
 {% block title %}Achievements{% endblock %}
 {% block content %}
-<h1 class="mb-4">Your achievements</h1>
+{% set is_mentor = user_type == 'Mentor' %}
+<h1 class="mb-4">{{ 'Mentee achievements' if is_mentor else 'Your achievements' }}</h1>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-1">{{ 'Record an achievement' if is_mentor else 'Add an achievement' }}</h5>
+        <p class="text-muted small mb-0">
+            {% if is_mentor %}Records you add are approved straight away.
+            {% else %}Your mentor will review it before it is marked as approved.{% endif %}
+        </p>
+    </div>
+    <div class="card-body p-4">
+        {% if people %}
+        <form method="post" action="{{ url_for('add_achievement') }}" class="row g-3">
+            <div class="col-md-6">
+                <label for="person_id" class="form-label fw-semibold">{{ 'Mentee' if is_mentor else 'Mentor' }} <span class="text-danger">*</span></label>
+                <select id="person_id" name="person_id" class="form-select" required>
+                    {% for person in people %}<option value="{{ person[0] }}">{{ person[1] }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="achievement_type" class="form-label fw-semibold">Type <span class="text-danger">*</span></label>
+                <select id="achievement_type" name="achievement_type" class="form-select" required>
+                    {% for t in ['CV Job-Ready', 'First Job Application', 'First Interview', 'Job Offer', 'Job', 'Internship', 'Certification', 'Training', 'Project', 'Other'] %}
+                    <option>{{ t }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-12">
+                <label for="title" class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                <input type="text" id="title" name="title" class="form-control" maxlength="150"
+                       placeholder="e.g. Applied for first graduate role" required>
+            </div>
+            <div class="col-md-8">
+                <label for="organisation" class="form-label fw-semibold">Organisation <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="text" id="organisation" name="organisation" class="form-control"
+                       placeholder="e.g. Company or institution name">
+            </div>
+            <div class="col-md-4">
+                <label for="achievement_date" class="form-label fw-semibold">Date <span class="text-danger">*</span></label>
+                <input type="date" id="achievement_date" name="achievement_date" class="form-control"
+                       max="{{ today }}" value="{{ today }}" required>
+            </div>
+            <div class="col-12 d-flex justify-content-end border-top pt-3 mt-4">
+                <button type="reset" class="btn btn-outline-secondary me-2">Clear</button>
+                <button type="submit" class="btn btn-primary px-4">{{ 'Record achievement' if is_mentor else 'Submit for approval' }}</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">You need a match before achievements can be recorded.</p>
+        {% endif %}
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
             <table class="table align-middle mb-0">
                 <thead>
                     <tr>
+                        <th>{{ 'Mentee' if is_mentor else 'Mentor' }}</th>
                         <th>Type</th>
                         <th>Title</th>
                         <th>Organisation</th>
                         <th>Date</th>
+                        <th>Status</th>
+                        {% if is_mentor %}<th></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% for achievement in achievements %}<tr>
-                        <td>{{ achievement[0] }}</td>
-                        <td>{{ achievement[1] }}</td>
-                        <td>{{ achievement[2] or 'Not specified' }}</td>
-                        <td>{{ achievement[3] }}</td>
+                    {% for a in achievements %}<tr>
+                        <td>{{ a[6] or 'Not specified' }}</td>
+                        <td>{{ a[1] }}</td>
+                        <td>{{ a[2] }}</td>
+                        <td>{{ a[3] or 'Not specified' }}</td>
+                        <td>{{ a[4] }}</td>
+                        <td>
+                            {% if a[5] == 1 %}<span class="badge bg-success">Approved</span>
+                            {% elif a[5] == 2 %}<span class="badge bg-danger">Rejected</span>
+                            {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+                        </td>
+                        {% if is_mentor %}<td class="text-nowrap">
+                            {% if a[5] != 1 %}
+                            <form method="post" action="{{ url_for('review_achievement', achievement_id=a[0]) }}" class="d-inline">
+                                <input type="hidden" name="decision" value="approve">
+                                <button class="btn btn-sm btn-success">Approve</button>
+                            </form>{% endif %}
+                            {% if a[5] != 2 %}
+                            <form method="post" action="{{ url_for('review_achievement', achievement_id=a[0]) }}" class="d-inline">
+                                <input type="hidden" name="decision" value="reject">
+                                <button class="btn btn-sm btn-outline-danger">Reject</button>
+                            </form>{% endif %}
+                        </td>{% endif %}
                     </tr>{% else %}<tr>
-                        <td colspan="4" class="text-muted">No achievements recorded yet.</td>
+                        <td colspan="{{ 7 if is_mentor else 6 }}" class="text-muted">No achievements recorded yet.</td>
                     </tr>{% endfor %}
                 </tbody>
             </table>
